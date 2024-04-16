@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-from flask import Flask, request, make_response
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request, make_response, jsonify
 from flask_migrate import Migrate
 
-from models import db, User, Review, Game
+from models import db, Bakery, BakedGood
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
@@ -16,71 +15,90 @@ migrate = Migrate(app, db)
 db.init_app(app)
 
 @app.route('/')
-def index():
-    return "Index for Game/Review/User API"
+def home():
+    return '<h1>Bakery GET-POST-PATCH-DELETE API</h1>'
 
-@app.route('/games')
-def games():
-
-    games = []
-    for game in Game.query.all():
-        game_dict = {
-            "title": game.title,
-            "genre": game.genre,
-            "platform": game.platform,
-            "price": game.price,
-        }
-        games.append(game_dict)
-
-    response = make_response(
-        games,
-        200
+@app.route('/baked_goods',methods=['POST'])
+def baked_goods():
+    new_baked_good=BakedGood(
+        name=request.form.get('name'),
+        price=request.form.get('price'),
+        created_at=request.form.get('created_at'),
+        updated_at=request.form.get('updated_at'),
+        bakery_id=request.form.get('bakery_id')
     )
-
-    return response
-
-@app.route('/games/<int:id>')
-def game_by_id(id):
-    game = Game.query.filter(Game.id == id).first()
+    db.session.add(new_baked_good)
+    db.session.commit()
     
-    game_dict = game.to_dict()
-
-    response = make_response(
-        game_dict,
-        200
-    )
-
+    new_baked_good_dict = new_baked_good.to_dict()
+    response=make_response(jsonify(new_baked_good_dict),201)
     return response
 
-@app.route('/reviews')
-def reviews():
+@app.route('/baked_goods/<int:id>',methods=['DELETE'])
+def baked_goods_by_id(id):
+    baked_good=BakedGood.query.filter_by(id=id).first()
+    
+    if baked_good==None:
+        response_body ={
+            "message":"This baked good does not exist in our database. Please try again"
+        }
+        response=make_response(jsonify(response_body), 200)
+        return response
+    elif request.method =="DELETE":
+        db.session.delete(baked_good)
+        db.session.commit()
+        
+        response_body={
+            "delete_successfull": True,
+            "message":"Baked good deleted."
+        }
+        response=make_response(jsonify(response_body),200)
+        return response
+    
+@app.route('/bakeries')
+def bakeries():
+    bakeries = [bakery.to_dict() for bakery in Bakery.query.all()]
+    return make_response(  bakeries,   200  )
 
-    reviews = []
-    for review in Review.query.all():
-        review_dict = review.to_dict()
-        reviews.append(review_dict)
+@app.route('/bakeries/<int:id>',methods=['GET', 'PATCH'])
+def bakery_by_id(id):
 
-    response = make_response(
-        reviews,
-        200
-    )
+    bakery = Bakery.query.filter_by(id=id).first()
+    
+    if bakery==None:
+        response_body ={
+            "message":"This bakery does not exist in our database. Please try again"
+        }
+        response=make_response(jsonify(response_body), 200)
+        return response
+    elif request.method == 'GET':
+        bakery_serialized = bakery.to_dict()
+        return make_response ( bakery_serialized, 200)
+    elif request.method=='PATCH':
+        bakery = Bakery.query.filter_by(id=id).first()
+        
+        for attr in request.form:
+            setattr(bakery, attr, request.form.get(attr))
+        db.session.add(bakery)
+        db.session.commit()
+        
+        bakery_serialized = bakery.to_dict()
+        return make_response ( bakery_serialized, 200)
 
-    return response
+@app.route('/baked_goods/by_price')
+def baked_goods_by_price():
+    baked_goods_by_price = BakedGood.query.order_by(BakedGood.price.desc()).all()
+    baked_goods_by_price_serialized = [
+        bg.to_dict() for bg in baked_goods_by_price
+    ]
+    return make_response( baked_goods_by_price_serialized, 200  )
+   
 
-@app.route('/users')
-def users():
-
-    users = []
-    for user in User.query.all():
-        user_dict = user.to_dict()
-        users.append(user_dict)
-
-    response = make_response(
-        users,
-        200
-    )
-
-    return response
+@app.route('/baked_goods/most_expensive')
+def most_expensive_baked_good():
+    most_expensive = BakedGood.query.order_by(BakedGood.price.desc()).limit(1).first()
+    most_expensive_serialized = most_expensive.to_dict()
+    return make_response( most_expensive_serialized,   200  )
 
 if __name__ == '__main__':
     app.run(port=5555, debug=True)
